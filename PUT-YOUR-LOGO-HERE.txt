@@ -1,9 +1,9 @@
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
 export async function POST() {
   try {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
     const paymentIntent = await stripe.paymentIntents.create({
       amount: 2900, // $29.00 in cents
       currency: "cad",
