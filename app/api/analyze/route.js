@@ -1,6 +1,8 @@
 import Stripe from "stripe";
 import Anthropic from "@anthropic-ai/sdk";
 
+const MAX_IMAGES = 10;
+
 // Give the analysis room to run. Long policies can take a couple of minutes.
 // (300s is the max on Vercel's Hobby plan with Fluid Compute, the default.)
 export const maxDuration = 300;
@@ -8,7 +10,7 @@ export const maxDuration = 300;
 // The instructions that shape every report. Edit this to change the output.
 const SYSTEM_PROMPT = `You are an expert insurance advisor who explains policies in plain, everyday English for regular people — not brokers.
 
-You will be given an insurance policy document. Produce a clear, friendly report a homeowner or driver can actually understand. Use these sections with simple headings:
+You will be given an insurance policy document — either a PDF or photos of its pages. Produce a clear, friendly report a homeowner or driver can actually understand. Use these sections with simple headings:
 
 1. WHAT THIS POLICY IS — one or two sentences: type of policy and who/what it covers.
 2. WHAT'S COVERED — the main things that ARE covered, in plain terms with the dollar limits where stated.
@@ -33,9 +35,18 @@ export async function POST(request) {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const { paymentIntentId, pdf } = await request.json();
+    const { paymentIntentId, pdf, images } = await request.json();
 
-    if (!paymentIntentId || !pdf) {
+    // Either one PDF, or 1-10 photos of the pages (the browser converts
+    // every photo to JPEG before sending).
+    const hasPdf = typeof pdf === "string" && pdf.length > 0;
+    const hasImages =
+      Array.isArray(images) &&
+      images.length > 0 &&
+      images.length <= MAX_IMAGES &&
+      images.every((img) => typeof img === "string" && img.length > 0);
+
+    if (!paymentIntentId || hasPdf === hasImages) {
       return Response.json({ error: "Missing information." }, { status: 400 });
     }
 
@@ -68,17 +79,26 @@ export async function POST(request) {
         {
           role: "user",
           content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: pdf,
-              },
-            },
+            ...(hasPdf
+              ? [
+                  {
+                    type: "document",
+                    source: {
+                      type: "base64",
+                      media_type: "application/pdf",
+                      data: pdf,
+                    },
+                  },
+                ]
+              : images.map((data) => ({
+                  type: "image",
+                  source: { type: "base64", media_type: "image/jpeg", data },
+                }))),
             {
               type: "text",
-              text: "Here is my insurance policy. Please give me the plain-English report.",
+              text: hasPdf
+                ? "Here is my insurance policy. Please give me the plain-English report."
+                : `Here are ${images.length} photo(s) of my insurance policy pages, in order. Please give me the plain-English report. If any page is blurry or cut off, say which one.`,
             },
           ],
         },
