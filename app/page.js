@@ -8,6 +8,8 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
+import LogoMark from "./components/LogoMark";
+import SiteFooter from "./components/SiteFooter";
 
 // Loaded once. Uses your PUBLISHABLE (safe-to-expose) test key.
 const stripePromise = loadStripe(
@@ -370,21 +372,7 @@ export default function Page() {
         )}
       </main>
 
-      <footer className="footer">
-        <div className="wrap">
-          <div className="footer-brand">
-            <LogoMark small />
-            <span>Insurance in English</span>
-          </div>
-          <p>
-            Insurance in English gives plain-language summaries of insurance
-            documents for general information only. It is not insurance
-            advice, legal advice, or a substitute for reading your full policy
-            or speaking with a licensed broker. Always confirm coverage details
-            with your insurer.
-          </p>
-        </div>
-      </footer>
+      <SiteFooter />
     </>
   );
 }
@@ -432,18 +420,6 @@ const IconClock = (p) => (
 const IconX = (p) => <Icon {...p} d={<path d="M6 6l12 12M18 6 6 18" />} />;
 const IconArrow = (p) => <Icon {...p} d={<path d="M5 12h14m-6-6 6 6-6 6" />} />;
 
-function LogoMark({ small }) {
-  const s = small ? 22 : 32;
-  return (
-    <svg width={s} height={s} viewBox="0 0 32 32" aria-hidden="true" className="logo-mark">
-      <rect width="32" height="32" rx="8" fill="#1f7a6d" />
-      <rect x="9" y="7" width="14" height="18" rx="2" fill="#fff" />
-      <rect x="11.5" y="11" width="9" height="2" rx="1" fill="#c9d6d3" />
-      <rect x="11" y="15" width="10" height="3.2" rx="1" fill="#ffc65a" />
-      <rect x="11.5" y="20" width="6" height="2" rx="1" fill="#c9d6d3" />
-    </svg>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /* Upload (landing) screen                                             */
@@ -466,7 +442,7 @@ function UploadView({
       <section className="hero">
         <div className="wrap hero-grid">
           <div className="hero-intro">
-            <p className="eyebrow">Insurance, decoded</p>
+            <p className="eyebrow">Canadian insurance, decoded</p>
             <h1>
               Find out what your policy <span className="hl">actually</span>{" "}
               covers.
@@ -515,7 +491,7 @@ function UploadView({
               <h3>Upload your policy</h3>
               <p>
                 A PDF from your insurer, or snap photos of the pages with your
-                phone. Home, auto, renters, RV, travel — any policy.
+                phone. Home, condo, tenant, auto, RV, travel — any province.
               </p>
             </li>
             <li>
@@ -578,6 +554,16 @@ function UploadView({
           <h2 className="section-title">Questions</h2>
           <div className="faq">
             <details>
+              <summary>Does it work for my province?</summary>
+              <p>
+                Yes — every province and territory. The report points out
+                provincial rules that matter, like public auto plans in BC,
+                Manitoba, Saskatchewan and Quebec. Policies written in French
+                work too: you&apos;ll get the report in plain English with the
+                French terms alongside.
+              </p>
+            </details>
+            <details>
               <summary>Is this insurance advice?</summary>
               <p>
                 No. It&apos;s a plain-language summary to help you understand
@@ -590,7 +576,8 @@ function UploadView({
               <summary>What happens to my document?</summary>
               <p>
                 It&apos;s sent securely to be read once to write your report,
-                and isn&apos;t stored afterward. We never sell or share it.
+                and isn&apos;t stored afterward. We never sell it. Details are
+                in our <a href="/privacy">Privacy Policy</a>.
               </p>
             </details>
             <details>
@@ -604,8 +591,9 @@ function UploadView({
             <details>
               <summary>What if the report isn&apos;t useful?</summary>
               <p>
-                Reply to your emailed receipt and you&apos;ll get a full refund,
-                no questions asked.
+                Reply to your emailed receipt within 30 days and you&apos;ll get
+                a full refund, no questions asked. See our{" "}
+                <a href="/refunds">Refund Policy</a>.
               </p>
             </details>
           </div>
@@ -761,6 +749,11 @@ function UploadCard({
         <IconShield size={16} />
         <span>Not useful? <b>Full refund, no questions.</b></span>
       </div>
+
+      <p className="consent">
+        By continuing you agree to our <a href="/terms">Terms</a> and{" "}
+        <a href="/privacy">Privacy Policy</a>.
+      </p>
 
       <button className="btn btn-link" onClick={onSeeSample}>
         See a sample report first
