@@ -16,6 +16,8 @@ const stripePromise = loadStripe(
 
 const PRICE_LABEL = "$29 CAD";
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Vercel caps API-route request bodies at ~4.5 MB and base64 inflates size by
 // ~33%, so we block oversized PDFs up front — before payment — with a clear
 // message, rather than letting the analysis fail after the customer has paid.
@@ -35,6 +37,7 @@ export default function Page() {
   // step: "upload" -> "pay" -> "analyzing" -> "report" | "error"
   const [step, setStep] = useState("upload");
   const [file, setFile] = useState(null);
+  const [email, setEmail] = useState("");
   const [clientSecret, setClientSecret] = useState(null);
   const [report, setReport] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -62,11 +65,17 @@ export default function Page() {
   // Create a payment intent on the server, then show the payment form.
   const goToPayment = async () => {
     if (!file) return;
+    if (!EMAIL_RE.test(email.trim())) {
+      setErrorMsg("Please enter a valid email so we can send your receipt.");
+      return;
+    }
     setBusy(true);
     setErrorMsg("");
     try {
       const res = await fetch("/api/create-payment-intent", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
       });
       if (!res.ok) throw new Error("Could not start checkout.");
       const data = await res.json();
@@ -118,6 +127,11 @@ export default function Page() {
         <UploadView
           file={file}
           onPickFile={onPickFile}
+          email={email}
+          onEmailChange={(v) => {
+            setEmail(v);
+            setErrorMsg("");
+          }}
           onContinue={goToPayment}
           onSeeSample={() => setStep("sample")}
           busy={busy}
@@ -187,7 +201,7 @@ export default function Page() {
 /* ------------------------------------------------------------------ */
 /* Upload screen                                                       */
 /* ------------------------------------------------------------------ */
-function UploadView({ file, onPickFile, onContinue, onSeeSample, busy, errorMsg }) {
+function UploadView({ file, onPickFile, email, onEmailChange, onContinue, onSeeSample, busy, errorMsg }) {
   return (
     <>
       <p className="eyebrow">Insurance, decoded</p>
@@ -242,6 +256,19 @@ function UploadView({ file, onPickFile, onContinue, onSeeSample, busy, errorMsg 
               <div className="drop-hint">or tap to browse</div>
             </>
           )}
+        </label>
+
+        <label className="field">
+          <span className="field-label">Email for your receipt</span>
+          <input
+            type="email"
+            className="field-input"
+            placeholder="you@example.com"
+            autoComplete="email"
+            inputMode="email"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+          />
         </label>
 
         <p className="anchor">Less than 15 minutes of a broker&apos;s time</p>
