@@ -1,267 +1,544 @@
-
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
 
-export default function Home() {
+// Loaded once. Uses your PUBLISHABLE (safe-to-expose) test key.
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+);
+
+const PRICE_LABEL = "$29 CAD";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Vercel caps API-route request bodies at ~4.5 MB and base64 inflates size by
+// ~33%, so we block oversized PDFs up front — before payment — with a clear
+// message, rather than letting the analysis fail after the customer has paid.
+const MAX_FILE_MB = 4;
+
+// ---- helper: turn the chosen file into base64 for the API route ----
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = () => reject(new Error("Could not read the file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+export default function Page() {
+  // step: "upload" -> "pay" -> "analyzing" -> "report" | "error"
+  const [step, setStep] = useState("upload");
   const [file, setFile] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState("");
-  const [error, setError] = useState("");
+  const [email, setEmail] = useState("");
+  const [clientSecret, setClientSecret] = useState(null);
+  const [report, setReport] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  function handleFileChange(e) {
-    const picked = e.target.files && e.target.files[0];
-    setError("");
-    setResult("");
-    if (picked && picked.type !== "application/pdf") {
-      setError("Please choose a PDF file.");
-      setFile(null);
+  const onPickFile = (e) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (f.type !== "application/pdf") {
+      setErrorMsg("Please choose a PDF file.");
       return;
     }
-    setFile(picked || null);
-  }
-
-  async function handleAnalyze() {
-    if (!file) {
-      setError("Choose a PDF first.");
+    if (f.size > MAX_FILE_MB * 1024 * 1024) {
+      setErrorMsg(
+        `That PDF is ${(f.size / 1024 / 1024).toFixed(1)} MB. For now, ` +
+          `please use a policy under ${MAX_FILE_MB} MB — support for larger ` +
+          `files is coming.`
+      );
       return;
     }
-    setLoading(true);
-    setError("");
-    setResult("");
+    setErrorMsg("");
+    setFile(f);
+  };
+
+  // Create a payment intent on the server, then show the payment form.
+  const goToPayment = async () => {
+    if (!file) return;
+    if (!EMAIL_RE.test(email.trim())) {
+      setErrorMsg("Please enter a valid email so we can send your receipt.");
+      return;
+    }
+    setBusy(true);
+    setErrorMsg("");
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/analyze", {
+      const res = await fetch("/api/create-payment-intent", {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
       });
-
-      if (!res.ok) {
-        throw new Error("The analyzer returned an error (" + res.status + ").");
-      }
-
+      if (!res.ok) throw new Error("Could not start checkout.");
       const data = await res.json();
-      // Be flexible about what the API route names its output.
-      const text =
-        data.result || data.analysis || data.text || data.message || "";
-      setResult(text || "No text came back. We'll check the analyzer next.");
+      setClientSecret(data.clientSecret);
+      setStep("pay");
     } catch (err) {
-      setError(err.message || "Something went wrong. Please try again.");
+      setErrorMsg(err.message);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
-  }
+  };
+
+  // Called by the payment form once payment succeeds.
+  const runAnalysis = useCallback(
+    async (paymentIntentId) => {
+      setStep("analyzing");
+      setErrorMsg("");
+      try {
+        const pdfBase64 = await fileToBase64(file);
+        const res = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentIntentId, pdf: pdfBase64 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Analysis failed.");
+        setReport(data.report);
+        setStep("report");
+      } catch (err) {
+        setErrorMsg(err.message);
+        setStep("error");
+      }
+    },
+    [file]
+  );
 
   return (
-    <main style={styles.page}>
-      <style>{keyframes}</style>
-
-      <header style={styles.header}>
-        <div style={styles.brand}>Insurance in English</div>
+    <div className="wrap">
+      <header className="site-header">
+        {/* LOGO: replace this wordmark with an <img> once you have a logo.
+            See the note in globals.css / README for exact steps. */}
+        <span className="wordmark">
+          Insurance in <span className="en">English</span>
+        </span>
+        <span className="header-note">Plain-English policy reviews</span>
       </header>
 
-      <section style={styles.hero}>
-        <h1 style={styles.h1}>Understand your insurance policy in plain English</h1>
-        <p style={styles.sub}>
-          Upload your policy PDF and get a clear, jargon-free breakdown of what
-          you&rsquo;re actually covered for &mdash; and what you&rsquo;re not.
-        </p>
-      </section>
-
-      <section style={styles.card}>
-        <label style={styles.uploadLabel}>
-          <input
-            type="file"
-            accept="application/pdf"
-            onChange={handleFileChange}
-            style={styles.hiddenInput}
-          />
-          <span style={styles.uploadInner}>
-            {file ? "\u2713 " + file.name : "Tap to choose your policy PDF"}
-          </span>
-        </label>
-
-        <button
-          onClick={handleAnalyze}
-          disabled={loading || !file}
-          style={{
-            ...styles.button,
-            ...(loading || !file ? styles.buttonDisabled : {}),
+      {step === "upload" && (
+        <UploadView
+          file={file}
+          onPickFile={onPickFile}
+          email={email}
+          onEmailChange={(v) => {
+            setEmail(v);
+            setErrorMsg("");
           }}
-        >
-          {loading ? "Analyzing\u2026" : "Analyze my policy"}
-        </button>
-
-        {loading && (
-          <div style={styles.loadingRow}>
-            <span style={styles.spinner} />
-            <span style={styles.loadingText}>
-              Reading your policy&hellip; this can take up to a minute.
-            </span>
-          </div>
-        )}
-
-        {error && <div style={styles.error}>{error}</div>}
-      </section>
-
-      {result && (
-        <section style={styles.resultCard}>
-          <h2 style={styles.resultTitle}>Your plain-English breakdown</h2>
-          <div style={styles.resultText}>{result}</div>
-        </section>
+          onContinue={goToPayment}
+          onSeeSample={() => setStep("sample")}
+          busy={busy}
+          errorMsg={errorMsg}
+        />
       )}
 
-      <footer style={styles.footer}>
-        This tool provides a plain-language summary for convenience only and is
-        not legal or insurance advice. Always confirm details with your insurer.
+      {step === "sample" && (
+        <SampleView onBack={() => setStep("upload")} />
+      )}
+
+      {step === "pay" && clientSecret && (
+        <Elements
+          stripe={stripePromise}
+          options={{
+            clientSecret,
+            appearance: {
+              theme: "flat",
+              variables: {
+                colorPrimary: "#1f7a6d",
+                fontFamily: "Inter, sans-serif",
+                borderRadius: "10px",
+              },
+            },
+          }}
+        >
+          <PayView
+            fileName={file?.name}
+            onPaid={runAnalysis}
+            onBack={() => setStep("upload")}
+          />
+        </Elements>
+      )}
+
+      {step === "analyzing" && <AnalyzingView />}
+
+      {step === "report" && <ReportView report={report} />}
+
+      {step === "error" && (
+        <div className="card">
+          <p className="card-title">Something went wrong</p>
+          <div className="error-box">{errorMsg}</div>
+          <button
+            className="btn btn-teal"
+            onClick={() => setStep("upload")}
+          >
+            Start over
+          </button>
+          <p className="card-sub" style={{ marginTop: 14, marginBottom: 0 }}>
+            If you were charged in a real (live) session, no report was
+            generated — reply to your receipt and it can be sorted out.
+          </p>
+        </div>
+      )}
+
+      <footer className="footer">
+        Insurance in English gives plain-language summaries of insurance
+        documents for general information only. It is not insurance advice,
+        legal advice, or a substitute for reading your full policy or speaking
+        with a licensed broker. Always confirm coverage details with your
+        insurer.
       </footer>
-    </main>
+    </div>
   );
 }
 
-const keyframes =
-  "@keyframes spin { to { transform: rotate(360deg); } }";
+/* ------------------------------------------------------------------ */
+/* Upload screen                                                       */
+/* ------------------------------------------------------------------ */
+function UploadView({ file, onPickFile, email, onEmailChange, onContinue, onSeeSample, busy, errorMsg }) {
+  return (
+    <>
+      <p className="eyebrow">Insurance, decoded</p>
+      <h1>
+        Find out what your policy <span className="hl">actually</span> covers.
+      </h1>
+      <p className="lede">
+        Upload your policy PDF and get a clear breakdown of what&apos;s
+        covered, what&apos;s excluded, and the fine print worth knowing —
+        written in plain English, not insurance-speak.
+      </p>
 
-const styles = {
-  page: {
-    minHeight: "100vh",
-    background: "#f6f7f9",
-    color: "#1a2233",
-    fontFamily:
-      "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    padding: "0 20px 60px",
-  },
-  header: {
-    maxWidth: 720,
-    margin: "0 auto",
-    padding: "24px 0",
-  },
-  brand: {
-    fontWeight: 700,
-    fontSize: 18,
-    color: "#173153",
-    letterSpacing: "-0.01em",
-  },
-  hero: {
-    maxWidth: 720,
-    margin: "0 auto",
-    padding: "24px 0 8px",
-    textAlign: "center",
-  },
-  h1: {
-    fontSize: 34,
-    lineHeight: 1.15,
-    fontWeight: 800,
-    color: "#173153",
-    margin: "0 0 16px",
-    letterSpacing: "-0.02em",
-  },
-  sub: {
-    fontSize: 17,
-    lineHeight: 1.6,
-    color: "#54627a",
-    margin: 0,
-  },
-  card: {
-    maxWidth: 560,
-    margin: "32px auto 0",
-    background: "#ffffff",
-    borderRadius: 16,
-    padding: 24,
-    boxShadow: "0 1px 3px rgba(23,49,83,0.08), 0 8px 24px rgba(23,49,83,0.06)",
-  },
-  uploadLabel: {
-    display: "block",
-    cursor: "pointer",
-  },
-  hiddenInput: {
-    display: "none",
-  },
-  uploadInner: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 96,
-    border: "2px dashed #c7d0dd",
-    borderRadius: 12,
-    color: "#54627a",
-    fontSize: 15,
-    fontWeight: 600,
-    textAlign: "center",
-    padding: 16,
-    background: "#fbfcfd",
-  },
-  button: {
-    width: "100%",
-    marginTop: 16,
-    padding: "16px 20px",
-    fontSize: 16,
-    fontWeight: 700,
-    color: "#ffffff",
-    background: "#2563eb",
-    border: "none",
-    borderRadius: 12,
-    cursor: "pointer",
-  },
-  buttonDisabled: {
-    background: "#aebfdc",
-    cursor: "not-allowed",
-  },
-  loadingRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 16,
-  },
-  spinner: {
-    width: 18,
-    height: 18,
-    borderRadius: "50%",
-    border: "3px solid #d7deea",
-    borderTopColor: "#2563eb",
-    animation: "spin 0.8s linear infinite",
-    display: "inline-block",
-  },
-  loadingText: {
-    fontSize: 14,
-    color: "#54627a",
-  },
-  error: {
-    marginTop: 16,
-    padding: "12px 14px",
-    background: "#fdecec",
-    color: "#b42318",
-    borderRadius: 10,
-    fontSize: 14,
-  },
-  resultCard: {
-    maxWidth: 720,
-    margin: "24px auto 0",
-    background: "#ffffff",
-    borderRadius: 16,
-    padding: 24,
-    boxShadow: "0 1px 3px rgba(23,49,83,0.08), 0 8px 24px rgba(23,49,83,0.06)",
-  },
-  resultTitle: {
-    fontSize: 20,
-    fontWeight: 800,
-    color: "#173153",
-    margin: "0 0 12px",
-  },
-  resultText: {
-    whiteSpace: "pre-wrap",
-    lineHeight: 1.7,
-    fontSize: 15,
-    color: "#2b3547",
-  },
-  footer: {
-    maxWidth: 720,
-    margin: "48px auto 0",
-    fontSize: 12,
-    lineHeight: 1.6,
-    color: "#8a94a6",
-    textAlign: "center",
-  },
-};
+      <div className="chips">
+        <div className="chip">
+          <span className="term">Deductible</span>
+          <span className="arrow">→</span>
+          <span className="plain">what you pay before coverage kicks in</span>
+        </div>
+        <div className="chip">
+          <span className="term">Exclusion</span>
+          <span className="arrow">→</span>
+          <span className="plain">a situation your policy won&apos;t cover</span>
+        </div>
+        <div className="chip">
+          <span className="term">Subrogation</span>
+          <span className="arrow">→</span>
+          <span className="plain">
+            your insurer chasing whoever caused the damage
+          </span>
+        </div>
+      </div>
+
+      <div className="card">
+        <p className="card-title">Upload your policy</p>
+        <p className="card-sub">
+          PDF only. Your file is read to produce your report and isn&apos;t
+          stored afterward.
+        </p>
+
+        <label className={`drop ${file ? "has-file" : ""}`}>
+          <input type="file" accept="application/pdf" onChange={onPickFile} />
+          {file ? (
+            <>
+              <div className="drop-icon">📄</div>
+              <div className="file-name">{file.name}</div>
+              <div className="drop-hint">Tap to choose a different file</div>
+            </>
+          ) : (
+            <>
+              <div className="drop-icon">⬆️</div>
+              <div className="drop-main">Choose your policy PDF</div>
+              <div className="drop-hint">or tap to browse</div>
+            </>
+          )}
+        </label>
+
+        <label className="field">
+          <span className="field-label">Email for your receipt</span>
+          <input
+            type="email"
+            className="field-input"
+            placeholder="you@example.com"
+            autoComplete="email"
+            inputMode="email"
+            value={email}
+            onChange={(e) => onEmailChange(e.target.value)}
+          />
+        </label>
+
+        <p className="anchor">Less than 15 minutes of a broker&apos;s time</p>
+        <div className="price-row">
+          <span className="label">One report</span>
+          <span className="price">
+            {PRICE_LABEL} <small>/ policy</small>
+          </span>
+        </div>
+
+        <button
+          className="btn btn-cta"
+          onClick={onContinue}
+          disabled={!file || busy}
+        >
+          {busy ? "Starting…" : "Continue to payment"}
+        </button>
+
+        <div className="guarantee">
+          🛡️ <span>Not useful? <b>Full refund, no questions.</b></span>
+        </div>
+
+        <button className="btn btn-link" onClick={onSeeSample}>
+          See a sample report first →
+        </button>
+
+        {errorMsg && <div className="error-box">{errorMsg}</div>}
+
+        <div className="trust">
+          <span>Read once, not stored</span>
+          <span>Ready in under a minute</span>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Sample report (shown BEFORE paying — big conversion lever)          */
+/* ------------------------------------------------------------------ */
+function SampleView({ onBack }) {
+  return (
+    <div className="card">
+      <div className="sample-banner">
+        👀 Real sample — an actual travel-trailer policy, run through the tool
+      </div>
+      <SampleReportBody />
+      <button className="btn btn-cta" onClick={onBack}>
+        Get my report — {PRICE_LABEL}
+      </button>
+      <div className="guarantee">
+        🛡️ <span>Not useful? <b>Full refund, no questions.</b></span>
+      </div>
+      <button className="btn btn-ghost" onClick={onBack}>
+        ← Back
+      </button>
+    </div>
+  );
+}
+
+/* Static example so people can see the payoff before paying.
+   A real travel-trailer policy run through the tool, with all identifying
+   details removed (no names, insurer, VIN, policy number, or dollar figures). */
+function SampleReportBody() {
+  return (
+    <div className="report report-rich">
+      <h4 style={{ marginTop: 4 }}>What this policy is</h4>
+      <p>
+        An all-risk travel trailer policy on a mid-size (~28 ft) trailer,
+        insured with <b>Guaranteed Replacement Cost</b> for a full year. It&apos;s
+        underwritten through a specialty insurer and sold by a broker, with a
+        bank listed as lienholder — meaning they get paid first on a claim. Two
+        things most people miss on their own page: the property coverage is
+        actually <b>split between two insurers</b> (one leads, one follows —
+        normal), and the trailer is insured as a <b>&quot;Worksite Residence,&quot;</b>{" "}
+        which you pay a surcharge for. Hold onto that last one — it matters more
+        than anything else here.
+      </p>
+
+      <h4>What&apos;s covered</h4>
+      <p>
+        All risks of direct physical loss to the trailer, up to the insured
+        value, with a set deductible per claim. Because it&apos;s Guaranteed
+        Replacement Cost, they&apos;ll pay to repair or replace{" "}
+        <b>even if it costs more than the insured value</b> — but only if you
+        meet three conditions (below). The deductible is waived on a total loss.
+      </p>
+      <p>
+        Bundled on top: personal property, detached structures, fire-department
+        charges, emergency living expense, roadside, and unit rescue &amp;
+        retrieval. Plus extensions buried in the wording that{" "}
+        <b>aren&apos;t on your summary page</b>: generators &amp; solar
+        equipment, bicycles, golf carts, frozen-food spoilage, pet-injury vet
+        bills, and lock re-keying. Free money you already paid for.
+      </p>
+
+      <h4>What&apos;s NOT covered (read twice)</h4>
+      <ul>
+        <li>
+          <b>Slow leaks.</b> Continuous or repeated water seepage is excluded —
+          only sudden, accidental water damage counts. The #1 way RV claims get
+          denied.
+        </li>
+        <li>
+          <b>Rodents and pests</b> — mice, squirrels, birds, insects. Classic
+          stored-trailer denial.
+        </li>
+        <li>Condensation, dampness, and extremes of temperature.</li>
+        <li>
+          Wear, rust, corrosion, rot, mechanical breakdown — unless a covered
+          event hits at the same time.
+        </li>
+        <li>
+          <b>Business use</b> — the sharp one. The base wording says the trailer
+          isn&apos;t covered if used for business or as a residence &quot;unless we
+          permit it.&quot; Your declarations page <b>does</b> permit it — that&apos;s
+          exactly what the &quot;Worksite Residence&quot; surcharge buys. But if an
+          adjuster reads only the base wording, expect pushback.{" "}
+          <b>Your declarations page is your proof — keep it with the policy.</b>
+        </li>
+        <li>
+          High-value items (jewellery, cash, electronics) have little or no
+          coverage.
+        </li>
+      </ul>
+
+      <h4>What you pay</h4>
+      <p>
+        An annual premium split between the trailer and the liability add-on,
+        with a set deductible per claim (waived on a total loss). If one event
+        triggers two deductibles, you only pay the larger one. You can pay
+        monthly or in full (a card fee applies to pay-in-full).
+      </p>
+
+      <h4>Fine print worth knowing</h4>
+      <ul>
+        <li>
+          <b>Guaranteed Replacement Cost has strings:</b> the insured value had
+          to equal 100% of replacement cost at the start, the trailer must be
+          kept in good condition, and any upgrade that raises its value past a
+          set threshold must be reported within 30 days — or you can blow the
+          GRC.
+        </li>
+        <li>
+          If you don&apos;t actually repair or replace, they only pay the
+          depreciated (Actual Cash Value) amount.
+        </li>
+        <li>
+          Change of use = notify them in writing promptly, or that part of
+          coverage can be voided.
+        </li>
+      </ul>
+
+      <h4>Questions to ask your broker</h4>
+      <ul>
+        <li>
+          Does my liability coverage actually respond if someone&apos;s hurt at
+          the trailer <b>in connection with my work</b>, given business
+          liability is excluded? (Biggest potential gap.)
+        </li>
+        <li>
+          Does the &quot;Worksite Residence&quot; designation fully override the
+          &quot;private use only&quot; condition for a property claim?
+        </li>
+        <li>
+          Was the insured value set to 100% of replacement cost, so my
+          Guaranteed Replacement Cost is actually valid?
+        </li>
+        <li>How exactly do I report upgrades to keep GRC intact?</li>
+      </ul>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Payment screen                                                      */
+/* ------------------------------------------------------------------ */
+function PayView({ fileName, onPaid, onBack }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [busy, setBusy] = useState(false);
+  const [payError, setPayError] = useState("");
+
+  const handlePay = async () => {
+    if (!stripe || !elements) return;
+    setBusy(true);
+    setPayError("");
+
+    const { error, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: "if_required", // keep the user on this page
+    });
+
+    if (error) {
+      setPayError(error.message || "Payment could not be completed.");
+      setBusy(false);
+      return;
+    }
+    if (paymentIntent && paymentIntent.status === "succeeded") {
+      onPaid(paymentIntent.id);
+    } else {
+      setPayError("Payment did not complete. Please try again.");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="card">
+      <p className="card-title">Payment</p>
+      <p className="card-sub">
+        Reviewing: <strong>{fileName}</strong> · {PRICE_LABEL}
+      </p>
+
+      <PaymentElement />
+
+      <button className="btn btn-cta" onClick={handlePay} disabled={busy}>
+        {busy ? "Processing…" : `Pay ${PRICE_LABEL} & get my report`}
+      </button>
+
+      <div className="guarantee">
+        🛡️ <span>Not useful? <b>Full refund, no questions.</b></span>
+      </div>
+
+      {payError && <div className="error-box">{payError}</div>}
+
+      <button className="btn btn-ghost" onClick={onBack} disabled={busy}>
+        ← Back
+      </button>
+
+      <p className="card-sub" style={{ marginTop: 10, marginBottom: 0 }}>
+        Test mode: use card 4242 4242 4242 4242, any future date, any CVC.
+      </p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Analyzing screen                                                    */
+/* ------------------------------------------------------------------ */
+function AnalyzingView() {
+  return (
+    <div className="card center">
+      <p className="card-title">Reading your policy…</p>
+      <p className="card-sub">
+        Working through the document and translating the jargon. This takes a
+        few seconds.
+      </p>
+      <div className="spinner" />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Report screen                                                       */
+/* ------------------------------------------------------------------ */
+function ReportView({ report }) {
+  return (
+    <div className="card">
+      <p className="card-title">Your plain-English report</p>
+      <p className="card-sub">
+        Here&apos;s what your policy says, in language you can actually use.
+      </p>
+      <div className="report">{report}</div>
+      <button
+        className="btn btn-teal"
+        onClick={() => window.print()}
+        style={{ marginTop: 22 }}
+      >
+        Save / print report
+      </button>
+    </div>
+  );
+}

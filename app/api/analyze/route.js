@@ -1,8 +1,9 @@
 import Stripe from "stripe";
 import Anthropic from "@anthropic-ai/sdk";
 
-// Give the analysis room to run.
-export const maxDuration = 60;
+// Give the analysis room to run. Long policies can take a couple of minutes.
+// (300s is the max on Vercel's Hobby plan with Fluid Compute, the default.)
+export const maxDuration = 300;
 
 // The instructions that shape every report. Edit this to change the output.
 const SYSTEM_PROMPT = `You are an expert insurance advisor who explains policies in plain, everyday English for regular people — not brokers.
@@ -47,11 +48,21 @@ export async function POST(request) {
       );
     }
 
+    // One payment = one report. Stops a paid payment ID being replayed for
+    // unlimited free reports.
+    if (intent.metadata?.report_delivered === "true") {
+      return Response.json(
+        { error: "A report was already generated for this payment." },
+        { status: 409 }
+      );
+    }
+
     // 2) Send the PDF to Claude for the plain-English breakdown.
-    //    Swap the model for "claude-haiku-4-5-20251001" to cut cost per report.
+    //    Swap the model for "claude-haiku-5-5" to cut cost per report.
+    //    max_tokens is generous because the model's thinking counts toward it.
     const message = await anthropic.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 2500,
+      max_tokens: 16000,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -74,10 +85,30 @@ export async function POST(request) {
       ],
     });
 
+    if (message.stop_reason === "refusal") {
+      return Response.json(
+        { error: "This document couldn't be analyzed. Please contact us for a refund." },
+        { status: 422 }
+      );
+    }
+
     const report = message.content
       .filter((block) => block.type === "text")
       .map((block) => block.text)
       .join("\n");
+
+    if (!report.trim()) {
+      return Response.json(
+        { error: "The analysis came back empty. Please try again." },
+        { status: 502 }
+      );
+    }
+
+    // Mark this payment as used only once a report actually exists, so a
+    // failed analysis can still be retried with the same payment.
+    await stripe.paymentIntents.update(paymentIntentId, {
+      metadata: { report_delivered: "true" },
+    });
 
     return Response.json({ report });
   } catch (err) {
