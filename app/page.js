@@ -21,7 +21,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Vercel caps API-route request bodies at ~4.5 MB and base64 inflates size by
 // ~33%, so we block oversized PDFs up front — before payment — with a clear
 // message, rather than letting the analysis fail after the customer has paid.
-const MAX_FILE_MB = 4;
+// 3 MB raw -> ~4 MB once base64-encoded, safely under Vercel's 4.5 MB cap.
+const MAX_FILE_MB = 3;
 
 // ---- helper: turn the chosen file into base64 for the API route ----
 function fileToBase64(file) {
@@ -42,6 +43,9 @@ export default function Page() {
   const [report, setReport] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  // Remembered after a successful payment so a failed analysis can be
+  // retried without charging the customer again.
+  const [paidIntentId, setPaidIntentId] = useState(null);
 
   const onPickFile = (e) => {
     const f = e.target.files?.[0];
@@ -91,6 +95,7 @@ export default function Page() {
   // Called by the payment form once payment succeeds.
   const runAnalysis = useCallback(
     async (paymentIntentId) => {
+      setPaidIntentId(paymentIntentId);
       setStep("analyzing");
       setErrorMsg("");
       try {
@@ -100,8 +105,27 @@ export default function Page() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ paymentIntentId, pdf: pdfBase64 }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Analysis failed.");
+        // Vercel answers some failures (too large, timed out) with a plain
+        // text/HTML page instead of JSON, so don't assume JSON.
+        const raw = await res.text();
+        let data = {};
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = {};
+        }
+        if (!res.ok) {
+          let msg = data.error;
+          if (!msg && res.status === 413) {
+            msg = "That PDF was too large to send. Please try a smaller file.";
+          } else if (!msg && res.status === 504) {
+            msg = "Reading your policy took too long. Please try again.";
+          } else if (!msg) {
+            msg = `The analyzer had a problem (error ${res.status}). Please try again.`;
+          }
+          throw new Error(msg);
+        }
+        if (!data.report) throw new Error("The analysis came back empty. Please try again.");
         setReport(data.report);
         setStep("report");
       } catch (err) {
@@ -174,15 +198,28 @@ export default function Page() {
         <div className="card">
           <p className="card-title">Something went wrong</p>
           <div className="error-box">{errorMsg}</div>
+          {paidIntentId && (
+            <button
+              className="btn btn-cta"
+              onClick={() => runAnalysis(paidIntentId)}
+            >
+              Try again — no extra charge
+            </button>
+          )}
           <button
             className="btn btn-teal"
-            onClick={() => setStep("upload")}
+            onClick={() => {
+              setPaidIntentId(null);
+              setFile(null);
+              setStep("upload");
+            }}
           >
             Start over
           </button>
           <p className="card-sub" style={{ marginTop: 14, marginBottom: 0 }}>
-            If you were charged in a real (live) session, no report was
-            generated — reply to your receipt and it can be sorted out.
+            Your payment went through but no report was generated. Try again
+            above at no extra cost, or reply to your emailed receipt for a
+            refund.
           </p>
         </div>
       )}
@@ -253,7 +290,7 @@ function UploadView({ file, onPickFile, email, onEmailChange, onContinue, onSeeS
             <>
               <div className="drop-icon">⬆️</div>
               <div className="drop-main">Choose your policy PDF</div>
-              <div className="drop-hint">or tap to browse</div>
+              <div className="drop-hint">PDF up to {MAX_FILE_MB} MB</div>
             </>
           )}
         </label>
