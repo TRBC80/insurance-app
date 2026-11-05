@@ -1,8 +1,8 @@
-// The text logo. "Car Deal in English" with "English" highlighted.
+// The text logo: "Don't Sign Yet" with "Yet" highlighted.
 export default function Wordmark() {
   return (
     <span className="wordmark">
-      Car Deal in <span className="en">English</span>
+      Don&apos;t Sign <span className="en">Yet</span>
     </span>
   );
 }

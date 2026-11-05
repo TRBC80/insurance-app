@@ -6,7 +6,7 @@ import "./globals.css";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "Car Deal in English — Know what you're signing at the dealership",
+  title: "Don't Sign Yet — Check your car deal before you sign",
   description:
     "Snap photos of your car purchase, finance or lease contract before you sign. Get a plain-English breakdown of the real price, the fees, the add-ons, and the red flags.",
 };

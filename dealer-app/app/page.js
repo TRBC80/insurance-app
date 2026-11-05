@@ -290,8 +290,8 @@ export default function Page() {
         <div className="wrap header-inner">
           {/* LOGO: to use an image logo, drop it in /public (e.g. public/logo.png)
               and replace this button's contents with
-              <img src="/logo.png" alt="Car Deal in English" className="logo-img" /> */}
-          <button className="brand" onClick={startOver} aria-label="Car Deal in English — home">
+              <img src="/logo.png" alt="Don't Sign Yet" className="logo-img" /> */}
+          <button className="brand" onClick={startOver} aria-label="Don't Sign Yet — home">
             <LogoMark />
             <Wordmark />
           </button>
@@ -501,7 +501,7 @@ function UploadView({
       <section className="hero">
         <div className="wrap hero-grid">
           <div className="hero-intro">
-            <p className="eyebrow">At the dealership? Don&apos;t sign yet.</p>
+            <p className="eyebrow">Snap it. Check it. Then sign.</p>
             <h1>
               Know what you&apos;re <span className="hl">actually</span>{" "}
               signing.
@@ -674,7 +674,8 @@ function UploadView({
                 Your paperwork is sent securely, read once to write your report,
                 and isn&apos;t stored afterward. You can cover your
                 driver&apos;s licence number and date of birth before taking the
-                photo — we don&apos;t need them. Details are in our{" "}
+                photo — we don&apos;t need them. Don&apos;t upload a credit
+                application (it can include your SIN). Details are in our{" "}
                 <a href="/privacy">Privacy Policy</a>.
               </p>
             </details>

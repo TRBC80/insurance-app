@@ -31,7 +31,8 @@ export default function Privacy() {
           number, vehicle details, and financial information such as your
           loan amount and payments. If you can, cover your driver&apos;s
           licence number and date of birth before you take the photo — we
-          don&apos;t need them.
+          don&apos;t need them. Please don&apos;t upload a credit
+          application: it can contain your Social Insurance Number.
         </li>
         <li>
           <b>Your email address</b>, so Stripe can send your receipt and we can

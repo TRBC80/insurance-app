@@ -19,7 +19,7 @@ export async function POST(request) {
       amount: 2900, // $29.00 in cents
       currency: "cad",
       automatic_payment_methods: { enabled: true },
-      description: "Car Deal in English — contract review",
+      description: "Don't Sign Yet — deal check",
       // Stripe emails the receipt here once payment succeeds (live mode).
       receipt_email: cleanEmail,
       metadata: { customer_email: cleanEmail },

@@ -1,4 +1,4 @@
-# Car Deal in English
+# Don't Sign Yet
 
 At the dealership and about to sign? Take photos of the bill of sale, finance
 contract or lease, pay, and get a plain-English review from Claude: the real
@@ -35,7 +35,7 @@ deploys as its own Vercel project and its own domain.
 
 ## Before going live
 
-- Pick the final name and domain, then update `app/site.js`, the wordmark in
+- Confirm dontsignyet.com is yours and the name is clear of trademarks, then check `app/site.js`, the wordmark in
   `app/components/Wordmark.js` and the metadata in `app/layout.js`.
 - Make sure the contact inbox in `app/site.js` exists.
 - Get the Terms and Privacy pages reviewed. The disclaimer framing is "not
