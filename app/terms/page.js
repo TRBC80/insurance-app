@@ -58,8 +58,9 @@ export default function Terms() {
 
       <h2>Refunds</h2>
       <p>
-        See our <a href="/refunds">Refund Policy</a>. In short: if your report
-        isn&apos;t useful, you get your money back.
+        See our <a href="/refunds">Refund Policy</a>. In short: if a report
+        fails or your document can&apos;t be read, you can retry free or get a
+        refund. Reports that have been delivered aren&apos;t refundable.
       </p>
 
       <h2>Your responsibilities</h2>

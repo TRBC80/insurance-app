@@ -489,7 +489,7 @@ function UploadView({
             <ul className="trust-row">
               <li><IconClock size={16} /> Ready in about a minute</li>
               <li><IconLock size={16} /> Read once, never stored</li>
-              <li><IconShield size={16} /> Full refund if it&apos;s not useful</li>
+              <li><IconCheck size={16} /> See a sample report before you pay</li>
             </ul>
           </div>
 
@@ -619,10 +619,12 @@ function UploadView({
               </p>
             </details>
             <details>
-              <summary>What if the report isn&apos;t useful?</summary>
+              <summary>What if something goes wrong?</summary>
               <p>
-                Reply to your emailed receipt within 30 days and you&apos;ll get
-                a full refund, no questions asked. See our{" "}
+                If the report fails or we can&apos;t read your document, you can
+                try again free or get a refund. Because every report is written
+                for your policy, we can&apos;t refund a report once it&apos;s been
+                delivered — so take a look at the sample report first. See our{" "}
                 <a href="/refunds">Refund Policy</a>.
               </p>
             </details>
@@ -782,8 +784,8 @@ function UploadCard({
       {errorMsg && <div className="error-box">{errorMsg}</div>}
 
       <div className="guarantee">
-        <IconShield size={16} />
-        <span>Not useful? <b>Full refund, no questions.</b></span>
+        <IconLock size={16} />
+        <span>Secure checkout by Stripe · <b>One-time payment</b></span>
       </div>
 
       <p className="consent">
@@ -815,8 +817,8 @@ function SampleView({ onBack }) {
         Get my report — {PRICE_LABEL}
       </button>
       <div className="guarantee">
-        <IconShield size={16} />
-        <span>Not useful? <b>Full refund, no questions.</b></span>
+        <IconLock size={16} />
+        <span>Secure checkout by Stripe · <b>One-time payment</b></span>
       </div>
     </div>
   );
@@ -877,7 +879,7 @@ function PayView({ summary, onPaid, onBack }) {
 
       <div className="guarantee">
         <IconLock size={16} />
-        <span>Secure payment by Stripe · <b>Full refund if not useful</b></span>
+        <span>Secure payment by Stripe · <b>One-time, no subscription</b></span>
       </div>
 
       {process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.startsWith("pk_test") && (
