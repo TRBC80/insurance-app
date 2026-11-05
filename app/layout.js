@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export const metadata = {
   title: "Insurance in English — Know what your policy actually covers",
   description:
-    "Upload your insurance policy and get a plain-English breakdown of what's covered, what isn't, and what to watch for.",
+    "Upload your home, auto, RV, boat, ATV or any other insurance policy and get a plain-English breakdown of what's covered, what isn't, and what to watch for.",
 };
 
 export default function RootLayout({ children }) {

@@ -812,3 +812,67 @@ a.header-link { text-decoration: underline; text-decoration-color: rgba(31, 122,
 .consent { margin: 10px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
 .consent a, .faq a { color: var(--teal-deep); text-underline-offset: 2px; }
 .file-chip-meta { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+
+/* ---------- policy types ---------- */
+.type-chips {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.type-chips li {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--teal-deep);
+  background: var(--card);
+  border: 1px solid #cfe2dd;
+  border-radius: 999px;
+  padding: 5px 12px;
+}
+.type-chips li.more { color: var(--muted); border-style: dashed; }
+
+.section-types { padding-top: 48px; }
+.section-sub {
+  margin: -16px 0 26px;
+  font-size: 16.5px;
+  color: var(--ink-soft);
+  max-width: 60ch;
+}
+.types-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+@media (min-width: 640px) { .types-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; } }
+@media (min-width: 940px) { .types-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+.type-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 8px 14px;
+  text-align: center;
+}
+.type-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--teal-wash);
+  color: var(--teal);
+}
+.type-label { font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.25; }
+/* Phones: compact two-column list (icon beside label). */
+@media (max-width: 639px) {
+  .types-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .type-tile { flex-direction: row; justify-content: flex-start; gap: 10px; padding: 10px 12px; text-align: left; }
+  .type-icon { width: 38px; height: 38px; border-radius: 10px; flex: none; }
+  .type-icon svg { width: 22px; height: 22px; }
+}
+.types-note { margin: 18px 0 0; font-size: 14.5px; color: var(--muted); }
