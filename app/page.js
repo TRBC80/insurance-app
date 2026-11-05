@@ -10,6 +10,7 @@ import {
 } from "@stripe/react-stripe-js";
 import LogoMark from "./components/LogoMark";
 import SiteFooter from "./components/SiteFooter";
+import { shrinkPdf } from "./lib/shrinkPdf";
 
 // Loaded once. Uses your PUBLISHABLE (safe-to-expose) test key.
 const stripePromise = loadStripe(
@@ -23,11 +24,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Vercel caps API-route request bodies at ~4.5 MB and base64 inflates size by
 // ~33%, so uploads are checked up front — before payment — rather than
 // letting the analysis fail after the customer has paid.
-// 3 MB raw PDF -> ~4 MB once base64-encoded, safely under the cap.
-const MAX_FILE_MB = 3;
+// PDFs up to 3 MB are sent as-is (~4 MB once base64-encoded). Bigger PDFs
+// are shrunk in the browser first (text + key page images; see lib/shrinkPdf).
+const DIRECT_PDF_MB = 3;
+const MAX_FILE_MB = 40;
 // Photos are shrunk in the browser before upload. 1600px on the long edge
 // keeps policy text readable (Claude downsizes anything bigger anyway).
-const MAX_IMAGES = 10;
+const MAX_IMAGES = 20;
 const MAX_IMAGE_EDGE = 1600;
 const MAX_ENCODED_CHARS = 4_000_000;
 
@@ -81,6 +84,7 @@ const isImage = (f) =>
 function docSummary(doc) {
   if (!doc) return "";
   if (doc.kind === "pdf") return doc.name;
+  if (doc.kind === "extracted") return `${doc.name} (${doc.pageCount} pages)`;
   const n = doc.pages.length;
   return `${n} photo${n === 1 ? "" : "s"} of your policy`;
 }
@@ -88,9 +92,12 @@ function docSummary(doc) {
 export default function Page() {
   // step: "upload" -> "pay" -> "analyzing" -> "report" | "error" (+ "sample")
   const [step, setStep] = useState("upload");
-  // doc: { kind: "pdf", name, data } | { kind: "images", pages: [{ name, data }] }
+  // doc: { kind: "pdf", name, data }
+  //    | { kind: "extracted", name, text, images: [{ page, data }], pageCount }
+  //    | { kind: "images", pages: [{ name, data }] }
   const [doc, setDoc] = useState(null);
   const [preparing, setPreparing] = useState(false);
+  const [prepLabel, setPrepLabel] = useState("");
   const [email, setEmail] = useState("");
   const [clientSecret, setClientSecret] = useState(null);
   const [report, setReport] = useState("");
@@ -137,7 +144,17 @@ export default function Page() {
               `one under ${MAX_FILE_MB} MB — or upload photos of the pages instead.`
           );
         }
-        setDoc({ kind: "pdf", name: f.name, data: await fileToBase64(f) });
+        if (f.size <= DIRECT_PDF_MB * 1024 * 1024) {
+          setDoc({ kind: "pdf", name: f.name, data: await fileToBase64(f) });
+          return;
+        }
+        setPrepLabel("Reading your PDF…");
+        const out = await shrinkPdf(f, {
+          budgetBytes: MAX_ENCODED_CHARS,
+          onProgress: (done, total) =>
+            setPrepLabel(`Reading page ${done} of ${total}…`),
+        });
+        setDoc({ kind: "extracted", name: f.name, ...out });
         return;
       }
 
@@ -166,6 +183,7 @@ export default function Page() {
       setErrorMsg(err.message || "Could not read that file.");
     } finally {
       setPreparing(false);
+      setPrepLabel("");
     }
   };
 
@@ -211,7 +229,16 @@ export default function Page() {
         const payload =
           doc.kind === "pdf"
             ? { paymentIntentId, pdf: doc.data }
-            : { paymentIntentId, images: doc.pages.map((p) => p.data) };
+            : doc.kind === "extracted"
+              ? {
+                  paymentIntentId,
+                  extracted: {
+                    text: doc.text,
+                    images: doc.images,
+                    pageCount: doc.pageCount,
+                  },
+                }
+              : { paymentIntentId, images: doc.pages.map((p) => p.data) };
         const res = await fetch("/api/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -285,6 +312,7 @@ export default function Page() {
           <UploadView
             doc={doc}
             preparing={preparing}
+            prepLabel={prepLabel}
             onPickFiles={onPickFiles}
             onRemovePage={removePage}
             onClear={() => setDoc(null)}
@@ -427,6 +455,7 @@ const IconArrow = (p) => <Icon {...p} d={<path d="M5 12h14m-6-6 6 6-6 6" />} />;
 function UploadView({
   doc,
   preparing,
+  prepLabel,
   onPickFiles,
   onRemovePage,
   onClear,
@@ -468,6 +497,7 @@ function UploadView({
             <UploadCard
               doc={doc}
               preparing={preparing}
+              prepLabel={prepLabel}
               onPickFiles={onPickFiles}
               onRemovePage={onRemovePage}
               onClear={onClear}
@@ -630,6 +660,7 @@ function TranslateCard() {
 function UploadCard({
   doc,
   preparing,
+  prepLabel,
   onPickFiles,
   onRemovePage,
   onClear,
@@ -646,10 +677,15 @@ function UploadCard({
       <p className="card-title">Get your report</p>
       <p className="card-sub">PDF, or photos of each page (JPG/PNG).</p>
 
-      {doc?.kind === "pdf" ? (
+      {doc?.kind === "pdf" || doc?.kind === "extracted" ? (
         <div className="file-chip">
           <span className="file-chip-icon"><IconFile size={20} /></span>
-          <span className="file-chip-name">{doc.name}</span>
+          <span className="file-chip-name">
+            {doc.name}
+            {doc.kind === "extracted" && (
+              <small className="file-chip-meta">{doc.pageCount} pages · ready</small>
+            )}
+          </span>
           <button className="icon-btn" onClick={onClear} aria-label="Remove file">
             <IconX size={18} />
           </button>
@@ -699,7 +735,7 @@ function UploadCard({
             {preparing ? <span className="spinner small" /> : <IconUpload size={22} />}
           </span>
           <span className="drop-main">
-            {preparing ? "Preparing…" : "Choose your policy"}
+            {preparing ? prepLabel || "Preparing…" : "Choose your policy"}
           </span>
           <span className="drop-hint">
             <span className="nowrap"><IconFile size={14} /> PDF up to {MAX_FILE_MB} MB</span>
