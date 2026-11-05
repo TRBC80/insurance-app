@@ -1,7 +1,8 @@
 import Stripe from "stripe";
 import Anthropic from "@anthropic-ai/sdk";
 
-const MAX_IMAGES = 10;
+const MAX_IMAGES = 20;
+const MAX_TEXT_CHARS = 3_800_000;
 
 // Give the analysis room to run. Long policies can take a couple of minutes.
 // (300s is the max on Vercel's Hobby plan with Fluid Compute, the default.)
@@ -35,6 +36,58 @@ Canadian context (most readers are in Canada):
 - In QUESTIONS TO ASK YOUR BROKER, the questions should suit a Canadian broker or insurer. If there's a dispute, readers can escalate to their insurer's ombudsman and then the General Insurance OmbudService (GIO) for home and auto — mention this only if the document raises a real risk of a dispute.
 - End with one line reminding the reader this is a plain-English summary for general understanding, and to confirm details with their insurer.`;
 
+// Build the message content for whichever upload type we received.
+function buildContent({ hasPdf, hasExtracted, pdf, images, extracted }) {
+  const image = (data) => ({
+    type: "image",
+    source: { type: "base64", media_type: "image/jpeg", data },
+  });
+
+  if (hasPdf) {
+    return [
+      {
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: pdf },
+      },
+      {
+        type: "text",
+        text: "Here is my insurance policy. Please give me the plain-English report.",
+      },
+    ];
+  }
+
+  if (hasExtracted) {
+    const pageImages = extracted.images.flatMap((img) => [
+      { type: "text", text: `Image of page ${img.page}:` },
+      image(img.data),
+    ]);
+    return [
+      ...pageImages,
+      {
+        type: "document",
+        source: { type: "text", media_type: "text/plain", data: extracted.text },
+        title: "Full policy text (extracted from the PDF)",
+      },
+      {
+        type: "text",
+        text:
+          `Here is my insurance policy (${extracted.pageCount} pages). The text of every page was extracted ` +
+          "from the PDF; images are included for the first pages (usually the declarations page) and for " +
+          "any scanned pages, because tables and layout can be lost in extraction. Use both. " +
+          "Please give me the plain-English report.",
+      },
+    ];
+  }
+
+  return [
+    ...images.map(image),
+    {
+      type: "text",
+      text: `Here are ${images.length} photo(s) of my insurance policy pages, in order. Please give me the plain-English report. If any page is blurry or cut off, say which one.`,
+    },
+  ];
+}
+
 export async function POST(request) {
   try {
     // Create the connections here (not at the top of the file) so the build
@@ -42,18 +95,35 @@ export async function POST(request) {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const { paymentIntentId, pdf, images } = await request.json();
+    const { paymentIntentId, pdf, images, extracted } = await request.json();
 
-    // Either one PDF, or 1-10 photos of the pages (the browser converts
-    // every photo to JPEG before sending).
+    // Exactly one of:
+    //  - pdf: a small PDF, sent as-is
+    //  - images: 1-20 photos of the pages (converted to JPEG in the browser)
+    //  - extracted: a large PDF shrunk in the browser to its text plus
+    //    JPEG images of key/scanned pages ({ text, images: [{ page, data }], pageCount })
     const hasPdf = typeof pdf === "string" && pdf.length > 0;
     const hasImages =
       Array.isArray(images) &&
       images.length > 0 &&
       images.length <= MAX_IMAGES &&
       images.every((img) => typeof img === "string" && img.length > 0);
+    const hasExtracted =
+      extracted &&
+      typeof extracted.text === "string" &&
+      extracted.text.length > 0 &&
+      extracted.text.length <= MAX_TEXT_CHARS &&
+      Array.isArray(extracted.images) &&
+      extracted.images.length <= MAX_IMAGES &&
+      extracted.images.every(
+        (img) =>
+          img &&
+          Number.isInteger(img.page) &&
+          typeof img.data === "string" &&
+          img.data.length > 0
+      );
 
-    if (!paymentIntentId || hasPdf === hasImages) {
+    if (!paymentIntentId || [hasPdf, hasImages, hasExtracted].filter(Boolean).length !== 1) {
       return Response.json({ error: "Missing information." }, { status: 400 });
     }
 
@@ -86,27 +156,7 @@ export async function POST(request) {
         {
           role: "user",
           content: [
-            ...(hasPdf
-              ? [
-                  {
-                    type: "document",
-                    source: {
-                      type: "base64",
-                      media_type: "application/pdf",
-                      data: pdf,
-                    },
-                  },
-                ]
-              : images.map((data) => ({
-                  type: "image",
-                  source: { type: "base64", media_type: "image/jpeg", data },
-                }))),
-            {
-              type: "text",
-              text: hasPdf
-                ? "Here is my insurance policy. Please give me the plain-English report."
-                : `Here are ${images.length} photo(s) of my insurance policy pages, in order. Please give me the plain-English report. If any page is blurry or cut off, say which one.`,
-            },
+            ...buildContent({ hasPdf, hasExtracted, pdf, images, extracted }),
           ],
         },
       ],

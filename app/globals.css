@@ -811,3 +811,4 @@ a.header-link { text-decoration: underline; text-decoration-color: rgba(31, 122,
 .footer-copy { margin-top: 10px !important; }
 .consent { margin: 10px 0 0; font-size: 12px; color: var(--muted); text-align: center; }
 .consent a, .faq a { color: var(--teal-deep); text-underline-offset: 2px; }
+.file-chip-meta { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); }
