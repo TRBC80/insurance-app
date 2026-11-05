@@ -450,6 +450,39 @@ const IconArrow = (p) => <Icon {...p} d={<path d="M5 12h14m-6-6 6 6-6 6" />} />;
 
 
 /* ------------------------------------------------------------------ */
+/* Policy types we cover                                               */
+/* ------------------------------------------------------------------ */
+const POLICY_TYPES = [
+  ["Home", <><path d="M3 11 12 4l9 7" /><path d="M5 10v10h14V10" /><path d="M10 20v-6h4v6" /></>],
+  ["Condo", <><rect x="5" y="3" width="14" height="18" rx="1" /><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2" /></>],
+  ["Tenant", <><circle cx="8" cy="15" r="4" /><path d="m11 12 8-8M16 7l2 2M14 9l2 2" /></>],
+  ["Car", <><path d="M3 16v-3l2.2-5h13.6L21 13v3z" /><circle cx="7.5" cy="16.5" r="1.8" /><circle cx="16.5" cy="16.5" r="1.8" /></>],
+  ["Truck", <><path d="M2 16V8h11v8" /><path d="M13 11h5l3 3v2h-8" /><circle cx="6" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></>],
+  ["Motorcycle", <><circle cx="5.5" cy="16" r="3" /><circle cx="18.5" cy="16" r="3" /><path d="M5.5 16 9 10h5l4.5 6M14 10l2-3h2" /></>],
+  ["RV & trailer", <><rect x="2" y="6" width="16" height="10" rx="2" /><path d="M18 13h4M6 9h4v3H6z" /><circle cx="8" cy="17" r="2" /></>],
+  ["Boat", <><path d="M3 15h18l-2.5 4h-13z" /><path d="M12 3v12M12 4l6 9h-6" /></>],
+  ["ATV & quad", <><circle cx="6" cy="16" r="3" /><circle cx="18" cy="16" r="3" /><path d="M9 16h6M7 13l2-4h6l2 4M11 9V6h3" /></>],
+  ["Snowmobile", <><path d="M3 19h15l3-2" /><path d="M6 19l2-5h8l3 5" /><path d="M10 14l1-4h4" /></>],
+  ["Travel", <><rect x="4" y="7" width="16" height="13" rx="2" /><path d="M9 7V4h6v3M4 12h16" /></>],
+  ["Farm", <><path d="M3 21V10l9-6 9 6v11z" /><path d="M9 21v-6h6v6M9 15l6 6M15 15l-6 6" /></>],
+  ["Business", <><path d="M4 10h16v10H4z" /><path d="M3 10l2-5h14l2 5M9 20v-5h6v5" /></>],
+  ["Life & more", <><circle cx="12" cy="12" r="9" /><path d="M12 8v8M8 12h8" /></>],
+];
+
+function PolicyTypes() {
+  return (
+    <div className="types-grid">
+      {POLICY_TYPES.map(([label, d]) => (
+        <div className="type-tile" key={label}>
+          <span className="type-icon"><Icon d={d} size={26} stroke={1.8} /></span>
+          <span className="type-label">{label}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Upload (landing) screen                                             */
 /* ------------------------------------------------------------------ */
 function UploadView({
@@ -481,6 +514,12 @@ function UploadView({
               clear, honest breakdown of what&apos;s covered, what isn&apos;t,
               and the fine print that trips people up.
             </p>
+            <ul className="type-chips" aria-label="Policies we cover">
+              {["Home", "Condo", "Tenant", "Car", "Truck", "RV", "Boat", "ATV", "Snowmobile", "Travel"].map((t) => (
+                <li key={t}>{t}</li>
+              ))}
+              <li className="more">+ more</li>
+            </ul>
           </div>
 
           <div className="hero-proof">
@@ -509,6 +548,21 @@ function UploadView({
               errorMsg={errorMsg}
             />
           </div>
+        </div>
+      </section>
+
+      <section className="section section-types">
+        <div className="wrap">
+          <h2 className="section-title">Works with every kind of policy</h2>
+          <p className="section-sub">
+            If it came with a policy document, we can explain it — from your
+            house and truck to the boat, quad and sled.
+          </p>
+          <PolicyTypes />
+          <p className="types-note">
+            Don&apos;t see yours? Life, pet, warranty and other policies work
+            too — if it&apos;s written down, we&apos;ll translate it.
+          </p>
         </div>
       </section>
 
