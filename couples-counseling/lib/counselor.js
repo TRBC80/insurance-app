@@ -74,11 +74,16 @@ export function toMessages({ kind, c, briefText, messages, finalUser }) {
   return out;
 }
 
+// On Vercel AI Gateway the free tier doesn't include every model, so try the best one first
+// and step down to the next Claude model when the gateway says the model isn't available.
+const GATEWAY_MODELS = ["anthropic/claude-opus-5.5", "anthropic/claude-sonnet-5.5", "anthropic/claude-haiku-5.5"];
+let gatewayStart = 0; // remembers the first model that worked, per server instance
+
+const modelUnavailable = (e) => e?.status === 403 && /free tier|not have access|no_providers_available/i.test(e?.message || "");
+
 // Send the full request first (refusal fallback on direct Anthropic, effort, structured output).
 // If the endpoint rejects an option it doesn't support, retry once with only the basics.
-export async function callClaude(full, basic) {
-  const client = await getClient();
-  const extra = direct ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {};
+async function callOnce(client, full, basic, extra) {
   try {
     return await client.beta.messages.create({ ...full, ...extra });
   } catch (e) {
@@ -88,4 +93,24 @@ export async function callClaude(full, basic) {
     }
     throw e;
   }
+}
+
+export async function callClaude(full, basic) {
+  const client = await getClient();
+  if (direct) return callOnce(client, full, basic, { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" });
+  let lastErr;
+  for (let i = gatewayStart; i < GATEWAY_MODELS.length; i++) {
+    const model = GATEWAY_MODELS[i];
+    try {
+      const res = await callOnce(client, { ...full, model }, { ...basic, model }, {});
+      gatewayStart = i;
+      return res;
+    } catch (e) {
+      lastErr = e;
+      if (!modelUnavailable(e)) throw e;
+      console.warn(`${model} not available on this plan; trying the next model.`);
+    }
+  }
+  gatewayStart = 0;
+  throw lastErr;
 }
