@@ -1,4 +1,4 @@
-import { client, MODEL, brief, toMessages, withFallback, fallbackParams } from "@/lib/counselor";
+import { MODEL, brief, toMessages, callClaude, aiReady } from "@/lib/counselor";
 import { loadContext, cleanMessages, validSid, errorResponse, HttpError } from "@/lib/context";
 import { saveSession } from "@/lib/sessions";
 
@@ -7,7 +7,7 @@ export const maxDuration = 120;
 export async function POST(req) {
   let ctx, kind, sid, messages;
   try {
-    if (!process.env.ANTHROPIC_API_KEY) throw new HttpError(503, "The counselor isn't connected yet: the site owner needs to add an Anthropic API key.");
+    if (!aiReady()) throw new HttpError(503, "The counselor isn't connected yet: the site owner needs to add an Anthropic API key.");
     const body = await req.json().catch(() => ({}));
     kind = body.kind === "joint" ? "joint" : "private";
     sid = body.sessionId;
@@ -23,17 +23,8 @@ export async function POST(req) {
     async start(controller) {
       let text = "";
       try {
-        // create({stream:true}) resolves once the API accepts the request, so a rejected
-        // parameter surfaces here and withFallback can retry before any text is sent.
-        const events = await withFallback((fb) => client.beta.messages.create({
-          model: MODEL,
-          max_tokens: 8000,
-          stream: true,
-          system: briefText,
-          output_config: { effort: "low" },
-          messages: toMessages({ kind, c: ctx.c, messages }),
-          ...fallbackParams(fb),
-        }));
+        const base = { model: MODEL, max_tokens: 8000, stream: true, system: briefText, messages: toMessages({ kind, c: ctx.c, messages }) };
+        const events = await callClaude({ ...base, output_config: { effort: "low" } }, base);
         for await (const event of events) {
           if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
             text += event.delta.text;

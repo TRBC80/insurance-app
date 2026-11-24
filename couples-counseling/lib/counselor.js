@@ -1,7 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getVercelOidcToken } from "@vercel/oidc";
 
-export const MODEL = "claude-opus-5-5";
-export const client = new Anthropic();
+// Two ways to reach Claude:
+// 1. ANTHROPIC_API_KEY set  -> call Anthropic directly.
+// 2. Otherwise, on Vercel   -> go through Vercel AI Gateway, signed in automatically with the
+//    deployment's OIDC token (billed to the Vercel team's AI Gateway credits; no key needed).
+const direct = Boolean(process.env.ANTHROPIC_API_KEY);
+export const MODEL = direct ? "claude-opus-5-5" : "anthropic/claude-opus-5.5";
+export const aiReady = () => direct || Boolean(process.env.AI_GATEWAY_API_KEY) || Boolean(process.env.VERCEL);
+
+export async function getClient() {
+  if (direct) return new Anthropic();
+  const apiKey = process.env.AI_GATEWAY_API_KEY || (await getVercelOidcToken());
+  return new Anthropic({ apiKey, baseURL: "https://ai-gateway.vercel.sh" });
+}
 
 const fmt = (t) => new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 const other = (r) => (r === "A" ? "B" : "A");
@@ -62,14 +74,18 @@ export function toMessages({ kind, c, briefText, messages, finalUser }) {
   return out;
 }
 
-// Server-side refusal fallback is on by default; if this account or SDK rejects the
-// parameter, retry once without it.
-export async function withFallback(make) {
+// Send the full request first (refusal fallback on direct Anthropic, effort, structured output).
+// If the endpoint rejects an option it doesn't support, retry once with only the basics.
+export async function callClaude(full, basic) {
+  const client = await getClient();
+  const extra = direct ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {};
   try {
-    return await make(true);
+    return await client.beta.messages.create({ ...full, ...extra });
   } catch (e) {
-    if (e instanceof Anthropic.BadRequestError && /fallback/i.test(e.message || "")) return make(false);
+    if (e instanceof Anthropic.BadRequestError) {
+      console.warn("Retrying with basic request:", e.message);
+      return client.messages.create(basic);
+    }
     throw e;
   }
 }
-export const fallbackParams = (on) => (on ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {});

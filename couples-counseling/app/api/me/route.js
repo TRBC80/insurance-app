@@ -1,5 +1,6 @@
 import { readJson, writeJson, removeJson, newId, resolveToken } from "@/lib/store";
 import { loadContext, errorResponse, HttpError } from "@/lib/context";
+import { aiReady } from "@/lib/counselor";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export async function GET(req) {
       handoffs: ctx.handoffs.map(({ id, from, summary, ask, createdAt }) => ({ id, from, summary, ask, createdAt })),
       joints: ctx.joints.map(({ id, summary, homework, createdAt }) => ({ id, summary, homework, createdAt })),
       privateCount: ctx.mine.length,
-      hasKey: Boolean(process.env.ANTHROPIC_API_KEY),
+      hasKey: aiReady(),
     });
   } catch (e) { return errorResponse(e); }
 }
