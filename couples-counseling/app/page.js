@@ -249,7 +249,8 @@ function Session({ token, data, session, setSession, onDone }) {
         const { done, value } = await reader.read();
         if (done) break;
         text += dec.decode(value, { stream: true });
-        if (text.includes("\u0000ERROR")) throw new Error("Wren lost the thread for a moment. Resend your last message.");
+        const errAt = text.indexOf("\u0000ERROR");
+        if (errAt !== -1) throw new Error(text.slice(errAt + 7).replace(/^:/, "") || "Wren lost the thread for a moment. Resend your last message.");
         setStreaming(text);
       }
       setSession((s) => ({ ...s, messages: [...messages, { who: "counselor", text: text.trim(), t: Date.now() }] }));

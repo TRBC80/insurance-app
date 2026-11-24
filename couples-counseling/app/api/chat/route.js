@@ -38,7 +38,11 @@ export async function POST(req) {
         await saveSession(ctx, kind, sid, { kind, messages: [...messages, { who: "counselor", text: text.trim(), t: Date.now() }] });
       } catch (e) {
         console.error(e);
-        controller.enqueue(encoder.encode("\u0000ERROR"));
+        const billing = e?.status === 403 || e?.status === 402 || /credit|billing|verification/i.test(e?.message || "");
+        const msg = billing
+          ? "Wren isn't switched on yet: the site owner needs to finish billing setup for the AI service."
+          : "Wren lost the thread for a moment. Resend your last message.";
+        controller.enqueue(encoder.encode("\u0000ERROR:" + msg));
       }
       controller.close();
     },
